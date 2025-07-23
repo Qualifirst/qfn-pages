@@ -15,19 +15,31 @@ function getErrorMessage(error) {
     return "";
 }
 
-export function FloatingLabelInput ({label, help, error, className, containerClass, containerAttrs, labelClass, labelAttrs, ...inputAttrs}) {
+export function FloatingLabelInput ({label, help, error, dropdownOptions, onDropdownClicked, className, containerClass, containerAttrs, labelClass, labelAttrs, ...inputAttrs}) {
     const uniqueId = useId();
     if (inputAttrs.required && !label.endsWith("*")) {
         label = label + " *";
     }
     return (
-        <div className={"relative z-0 mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
+        <div className={"relative mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
             <input type="text" id={uniqueId} placeholder=" " autoComplete={(inputAttrs || {}).type === "password" ? "no" : "yes"} {...(inputAttrs || {})}
                 className={"block pt-2 pb-1 px-0 w-full text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-500 appearance-none focus:outline-none focus:ring-0 peer " + (className || '')}/>
             <label htmlFor={uniqueId} {...(labelAttrs || {})}
                 className={"peer-focus:font-medium absolute text-sm text-gray-700 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 rtl:peer-focus:left-auto peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6 " + (labelClass || '')}>
                 {label}
             </label>
+            {dropdownOptions && dropdownOptions.length > 0 && (
+                <div className="absolute w-full mt-1 bg-white z-50">
+                    {dropdownOptions.map((opt, idx) => (
+                        <div onClick={() => {
+                            onDropdownClicked(opt);
+                        }} key={idx}
+                                className={`border-1 ${idx ? 'border-t-0' : ''} p-1 text-xs text-gray-800 cursor-pointer hover:bg-gray-100`}>
+                            {opt.mainText || ''} <span className="text-gray-400">{opt.secondaryText || ''}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
             {help && (
                 <p className="mt-0.5 text-xs text-gray-500">
                     {help}
@@ -51,7 +63,7 @@ export function FloatingLabelSelect({label, options, help, error, className, con
         label = label + " *";
     }
     return (
-        <div className={"relative z-0 mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
+        <div className={"relative mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
             <select type="text" id={uniqueId} placeholder=" " autoComplete="on" {...(inputAttrs || {})}
                 className={"block pt-2 pb-0.5 px-0 w-full text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-500 appearance-none focus:outline-none focus:ring-0 peer " + (className || '')}>
                     <option value="" {...{disabled: inputAttrs.required}}>{(inputAttrs || {}).placeholder || '...'}</option>
@@ -83,7 +95,7 @@ export function Checkbox ({label, error, className, containerClass, containerAtt
         label = label + " *";
     }
     return (
-        <div className={"relative z-0 mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
+        <div className={"relative mt-4 group w-full " + (containerClass || '')} {...(containerAttrs || {})}>
             <label htmlFor={uniqueId} {...(labelAttrs || {})}
                 className={"text-sm text-gray-900 " + (labelClass || '')}>
                 <input type="checkbox" id={uniqueId} placeholder=" " autoComplete={(inputAttrs || {}).type === "password" ? "no" : "yes"} {...(inputAttrs || {})}

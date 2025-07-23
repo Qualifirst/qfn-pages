@@ -2,9 +2,10 @@
 
 import { Checkbox, FloatingLabelInput, FloatingLabelSelect } from "components/input";
 import { companyTypes, countries, cuisineTypes, employees, spendAmounts, states } from "shared/data";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useSearchParams } from "next/navigation";
+import { v4 as uuidV4 } from "uuid";
 
 export default function SignupForm({reCaptchaSiteKey}) {
     const {register, handleSubmit, watch, formState, setValue, setError} = useForm({
@@ -38,6 +39,103 @@ export default function SignupForm({reCaptchaSiteKey}) {
 
     const searchParams = useSearchParams();
     const redirectTo = searchParams.get('redirect');
+
+    const abortControllerRef = useRef(new AbortController());
+    const delayTimerRef = useRef(0);
+    const lastQueryRef = useRef('');
+    const autocompleteFocusRef = useRef('');
+    const autocompleteSessionRef = useRef(uuidV4());
+
+    const [companyAutocomplete, setCompanyAutocomplete] = useState([]);
+    const [addressAutocomplete, setAddressAutocomplete] = useState([]);
+
+    const handleAutocomplete = useCallback(async (query) => {
+        abortControllerRef.current.abort();
+        clearTimeout(delayTimerRef.current);
+
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        delayTimerRef.current = setTimeout(async () => {
+            try {
+                const includedTypes = autocompleteFocusRef.current === 'address1' ? ['street_address'] : ['establishment'];
+                const res = await fetch('/.netlify/functions/gmaps-places', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(['autocomplete', query, includedTypes, autocompleteSessionRef.current]),
+                    signal: abortController.signal,
+                });
+                if (res.status === 200) {
+                    const resJson = await res.json();
+                    if (autocompleteFocusRef.current === 'companyName') {
+                        setCompanyAutocomplete(resJson);
+                        setAddressAutocomplete([]);
+                    } else if (autocompleteFocusRef.current === 'address1') {
+                        setAddressAutocomplete(resJson);
+                        setCompanyAutocomplete([]);
+                    }
+                }
+            } catch(error) {
+            }
+        }, 500);
+    }, [setCompanyAutocomplete, setAddressAutocomplete]);
+
+    const [autocompleteFocus, setAutocompleteFocus] = useState('');
+    const onFocusAutocomplete = useCallback((field) => {
+        if (autocompleteFocus !== field) setAutocompleteFocus(field);
+    }, [autocompleteFocus, setAutocompleteFocus]);
+    const onBlurAutocomplete = useCallback((field) => {
+        setTimeout(() => {if (autocompleteFocus === field) setAutocompleteFocus('');}, 100);
+    }, [autocompleteFocus, setAutocompleteFocus]);
+
+    const address1 = watch('address1');
+
+    useEffect(() => {
+        autocompleteFocusRef.current = autocompleteFocus;
+        let query = '';
+        if (autocompleteFocus === 'companyName') query = companyName;
+        else if (autocompleteFocus === 'address1') query = address1;
+        if (query.length < 3 || !autocompleteFocus) {
+            abortControllerRef.current.abort();
+            clearTimeout(delayTimerRef.current);
+            setAddressAutocomplete([]);
+            setCompanyAutocomplete([]);
+            return;
+        }
+        if (query === lastQueryRef.current) return;
+        lastQueryRef.current = query;
+        handleAutocomplete(query, 'establishment');
+    }, [companyName, address1, autocompleteFocus, setCompanyAutocomplete, setAddressAutocomplete]);
+
+    const onAutocompleteClicked = useCallback(async (option, autocompleteType) => {
+        const session = autocompleteSessionRef.current;
+        autocompleteSessionRef.current = uuidV4();
+        try {
+            const res = await fetch('/.netlify/functions/gmaps-places', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(['getPlace', option.placeId, session]),
+            });
+            const resJson = await res.json();
+            if (autocompleteType === 'company') {
+                setValue('companyName', resJson.name);
+                setValue('phone', resJson.phone);
+                setValue('companyWebsite', resJson.website);
+            }
+            setValue('address1', resJson.address.address1);
+            setValue('address2', resJson.address.address2);
+            setValue('city', resJson.address.city);
+            setValue('zip', resJson.address.zip);
+            setValue('country', resJson.address.country);
+            setTimeout(() => {
+                setValue('state', resJson.address.state);
+            }, 100);
+        } catch {}
+    }, [setValue]);
 
     const onSubmit = useCallback((data) => {
         let phone = (data.phone || '').replace(/[^0-9+]/g, '');
@@ -155,6 +253,8 @@ export default function SignupForm({reCaptchaSiteKey}) {
                     <div className="w-full">
                         <div className="sm:flex gap-2">
                             <FloatingLabelInput label="Business Name" {...register("companyName")} error={formState.errors.companyName}
+                                onFocus={() => onFocusAutocomplete('companyName')} onBlur={() => onBlurAutocomplete('companyName')}
+                                dropdownOptions={companyAutocomplete} onDropdownClicked={(opt) => onAutocompleteClicked(opt, 'company')}
                                 help={!isCompany && "If you are part of a Business, you can enjoy Wholesale pricing in all of our products!"}/>
                             {isCompany && (
                                 <FloatingLabelInput label="Job Position" {...register("title", {required: true})} error={formState.errors.title} required/>
@@ -201,6 +301,8 @@ export default function SignupForm({reCaptchaSiteKey}) {
                         )}
                         <div className="sm:flex">
                             <FloatingLabelInput label="Address Line 1" {...register("address1", {required: true})}
+                                onFocus={() => onFocusAutocomplete('address1')} onBlur={() => onBlurAutocomplete('address1')}
+                                dropdownOptions={addressAutocomplete} onDropdownClicked={(opt) => onAutocompleteClicked(opt, 'address')}
                                 error={formState.errors.address1} required/>
                         </div>
                         <div className="sm:flex">
